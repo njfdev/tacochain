@@ -1,0 +1,8 @@
+[experimental]
+multitarget = true
+
+[build]
+target = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
+
+[alias]
+run_local = "run --target=aarch64-apple-darwin"
