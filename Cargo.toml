@@ -1,18 +1,28 @@
 [package]
 name = "tacochain"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# Used for creating timestamps in our blockchain
 chrono = "0.4"
+# We use the SHA256 hashing algorithm
 sha2 = "0.9.8"
+# A framework for SERializing and DEserializing data structures. Use use the feature derive
+# so we can have any data structure derive from the Serialize and Deserialize type.
 serde = {version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# LibP2P lets us build peer to peer applications such as a decentralized blockchain.
 libp2p = { version = "0.39", features = ["tcp-tokio", "mdns"] }
+# A Rust runtime specifically for building reliable network applications. Focused on being
+# asynchronous, reliable, and fast.
 tokio = { version = "1.0", features = ["io-util", "io-std", "macros", "rt", "rt-multi-thread", "sync", "time"] }
+# Use for encoding and decoding hexadecimal
 hex = "0.4"
+# Used so we can lazy load variables
 once_cell = "1.5"
+# Used for logging and making it "pretty" in the console
 log = "0.4.6"
 pretty_env_logger = "0.4"
