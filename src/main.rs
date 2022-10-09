@@ -62,12 +62,12 @@ impl Block {
 }
 
 // Generate a SHA256 hash based off of the block data
-fn calculate_hash(id: u64, timestamp: i64, previous_hash: &str, data: &str, nonce: u64) -> Vec<u8> {
+fn calculate_hash(id: u64, timestamp: i64, previous_hash: &str, data_hash: &str, nonce: u64) -> Vec<u8> {
     // Convert our data to a json object
     let data = serde_json::json!({
         "id": id,
         "previous_hash": previous_hash,
-        "data": data,
+        "data_hash": data_hash,
         "timestamp": timestamp,
         "nonce": nonce
     });
@@ -84,6 +84,15 @@ fn mine_block(id: u64, timestamp: i64, previous_hash: &str, data: &str) -> (u64,
     info!("mining block...");
     let mut nonce = 0;
 
+    // We create a hash of the data to pass to our calculate_hash function.
+    // We use a hash because they will always be 64 characters long even if
+    // the actually data is 1 million characters long. This makes the mining
+    // process the same speed for a lot of data or a little bit of data.
+    let mut hasher = Sha256::new();
+    hasher.update(data.as_bytes());
+    // Formate the hash as a hex string
+    let data_hash: String = format!("{:X}", hasher.finalize());
+
     // Loop through nonces and check if the hash starts with the DIFFICULTY_PREFIX
     loop {
         // Every 100,000 loops, output the nonce
@@ -91,7 +100,7 @@ fn mine_block(id: u64, timestamp: i64, previous_hash: &str, data: &str) -> (u64,
             info!("nonce: {}", nonce);
         }
         // Calculate the hash
-        let hash = calculate_hash(id, timestamp, previous_hash, data, nonce);
+        let hash = calculate_hash(id, timestamp, previous_hash, &data_hash, nonce);
         // Convert the hash to binary
         let binary_hash = hash_to_binary_representation(&hash);
         // Check if the binary hash starts with the nonce
