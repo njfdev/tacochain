@@ -25,6 +25,7 @@ use tokio::{
 const DIFFICULTY_PREFIX: &str = "0000000000000000";
 
 mod p2p;
+mod wallet;
 
 // The app just stores out blockchain
 pub struct App {
@@ -251,6 +252,8 @@ impl App {
 async fn main() {
     // Initialize the logger so we can see output
     pretty_env_logger::init();
+
+    wallet::Wallet::new();
 
     // Announce the local peer id
     info!("Peer Id: {}", p2p::PEER_ID.clone());
