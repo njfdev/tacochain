@@ -26,4 +26,3 @@ once_cell = "1.5"
 # Used for logging and making it "pretty" in the console
 log = "0.4.6"
 pretty_env_logger = "0.4"
-byte_strings = "0.1.3"

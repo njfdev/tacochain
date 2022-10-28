@@ -205,7 +205,7 @@ pub fn handle_create_block(cmd: &str, swarm: &mut Swarm<AppBehaviour>) {
         let block = Block::new(
             latest_block.id + 1,
             latest_block.hash.clone(),
-            data.to_owned(),
+            vec![],
         );
         // Convert the block to json so we can send in over the p2p network.
         let json = serde_json::to_string(&block).expect("can jsonify request");

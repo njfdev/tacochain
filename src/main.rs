@@ -6,11 +6,12 @@ use libp2p::{
     noise::{Keypair, NoiseConfig, X25519Spec},
     swarm::{Swarm, SwarmBuilder},
     tcp::TokioTcpConfig,
-    Transport,
+    Transport, identity::ed25519::{PublicKey, self},
 };
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use wallet::Transaction;
 use std::time::Duration;
 use tokio::{
     io::{stdin, AsyncBufReadExt, BufReader},
@@ -39,24 +40,24 @@ pub struct Block {
     pub hash: String,
     pub previous_hash: String,
     pub timestamp: i64,
-    pub data: String,
+    pub transactions: Vec<Transaction>,
     pub nonce: u64,
 }
 
 impl Block {
     // Create a new block
-    pub fn new(id: u64, previous_hash: String, data: String) -> Self {
+    pub fn new(id: u64, previous_hash: String, transactions: Vec<Transaction>) -> Self {
         // Get a time at the block creation
         let now = Utc::now();
         // Mine the block with our block data and get our nonce and hash
-        let (nonce, hash) = mine_block(id, now.timestamp(), &previous_hash, &data);
+        let (nonce, hash) = mine_block(id, now.timestamp(), &previous_hash, &transactions);
         // Return a new instance of a Block
         Self {
             id,
             hash,
             timestamp: now.timestamp(),
             previous_hash,
-            data,
+            transactions,
             nonce,
         }
     }
@@ -80,19 +81,24 @@ fn calculate_hash(id: u64, timestamp: i64, previous_hash: &str, data_hash: &str,
     hasher.finalize().as_slice().to_owned()
 }
 
-// Brute force finding the nonce in a process called mining
-fn mine_block(id: u64, timestamp: i64, previous_hash: &str, data: &str) -> (u64, String) {
-    info!("mining block...");
-    let mut nonce = 0;
-
+fn transactions_to_hash(transactions: &[Transaction]) -> String {
     // We create a hash of the data to pass to our calculate_hash function.
     // We use a hash because they will always be 64 characters long even if
     // the actually data is 1 million characters long. This makes the mining
     // process the same speed for a lot of data or a little bit of data.
     let mut hasher = Sha256::new();
-    hasher.update(data.as_bytes());
+    let transactions_in_bytes: Vec<u8> = transactions.iter().map(|transaction| -> Vec<u8> { Transaction::transaction_to_vec(transaction) }).collect::<Vec<_>>().concat();
+    hasher.update(transactions_in_bytes);
     // Formate the hash as a hex string
-    let data_hash: String = format!("{:X}", hasher.finalize());
+    format!("{:X}", hasher.finalize())
+}
+
+// Brute force finding the nonce in a process called mining
+fn mine_block(id: u64, timestamp: i64, previous_hash: &str, transactions: &Vec<Transaction>) -> (u64, String) {
+    info!("mining block...");
+    let mut nonce = 0;
+
+    let data_hash = transactions_to_hash(&transactions);
 
     // Loop through nonces and check if the hash starts with the DIFFICULTY_PREFIX
     loop {
@@ -141,13 +147,24 @@ impl App {
     }
 
     // Create a genesis block
-    fn genesis(&mut self) {
+    fn genesis(&mut self, creator_address: &PublicKey) {
+        let from_address = [0; 32];
+        let to_address: [u8; 32] = creator_address.encode();
+        let amount: u64 = 100;
+
         // Create our genesis block
         let genesis_block = Block::new(
             0, 
             String::from("genesis"), 
-            String::from("This is the genesis block! How cool! Everything on this chain relies on this single block"
-        ));
+            vec![
+                Transaction {
+                    from_address,
+                    to_address,
+                    amount,
+                    signature: vec![0]
+                }
+            ]
+        );
         // Add our block without running it through try_add_block().
         // We do this because the previous_hash is invalid as no
         // previous block exists.
@@ -192,7 +209,7 @@ impl App {
             block.id,
             block.timestamp,
             &block.previous_hash,
-            &block.data,
+            &transactions_to_hash(&block.transactions),
             block.nonce,
         )) != block.hash
         {
@@ -253,7 +270,7 @@ async fn main() {
     // Initialize the logger so we can see output
     pretty_env_logger::init();
 
-    wallet::Wallet::new();
+    let wallet = wallet::Wallet::new();
 
     // Announce the local peer id
     info!("Peer Id: {}", p2p::PEER_ID.clone());
@@ -364,7 +381,7 @@ async fn main() {
                     // Otherwise, this is the only node
                     } else {
                         // because there are no other nodes to get the chain from, create the chain locally
-                        swarm.behaviour_mut().app.genesis();
+                        swarm.behaviour_mut().app.genesis(&wallet.keypair.public());
                     }
                 }
                 // If a peer is requesting our chain
