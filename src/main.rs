@@ -31,6 +31,7 @@ mod wallet;
 // The app just stores out blockchain
 pub struct App {
     pub blocks: Vec<Block>,
+    pub pending_transactions: Vec<Transaction>,
 }
 
 // We create out block with the necessary information
@@ -143,7 +144,7 @@ impl App {
     // Create a new App
     fn new() -> Self {
         // Initialize the app with an empty
-        Self { blocks: vec![] }
+        Self { blocks: vec![], pending_transactions: vec![] }
     }
 
     // Create a genesis block
@@ -181,6 +182,11 @@ impl App {
         } else {
             error!("could not add block - invalid");
         }
+    }
+
+    // Add a block to the chain if it is valid
+    fn try_add_transaction(&mut self, transaction: Transaction) {
+        self.pending_transactions.push(transaction);
     }
 
     // Check if a block is valid
@@ -271,6 +277,8 @@ async fn main() {
     pretty_env_logger::init();
 
     let wallet = wallet::Wallet::new();
+
+    info!("Wallet Id: {}", hex::encode(wallet.keypair.public().encode()));
 
     // Announce the local peer id
     info!("Peer Id: {}", p2p::PEER_ID.clone());
@@ -398,9 +406,11 @@ async fn main() {
                     // List all the peers
                     "peers" => p2p::handle_print_peers(&swarm),
                     // List the blockchain
-                    cmd if cmd.starts_with("ls") => p2p::handle_print_chain(&swarm),
+                    cmd if cmd.starts_with("ls b") => p2p::handle_print_chain(&swarm),
+                    // List pending_transactions
+                    cmd if cmd.starts_with("ls t") => p2p::handle_print_transactions(&swarm),
                     // create a block
-                    cmd if cmd.starts_with("cb") => p2p::handle_create_block(cmd, &mut swarm),
+                    cmd if cmd.starts_with("send ") => p2p::send_transaction(cmd, &wallet, &mut swarm),
                     // Error if the command is not valid
                     _ => error!("unknown command"),
                 },

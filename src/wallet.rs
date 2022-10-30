@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use libp2p::identity::ed25519::{self, PublicKey};
 use serde::{Deserialize, Serialize};
 
@@ -18,9 +20,12 @@ impl Wallet {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Transaction {
+    #[serde(with = "hex")]
     pub from_address: [u8; 32],
+    #[serde(with = "hex")]
     pub to_address: [u8; 32],
     pub amount: u64,
+    #[serde(with = "hex")]
     pub signature: Vec<u8>
 }
 

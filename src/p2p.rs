@@ -1,12 +1,14 @@
+use crate::wallet::{Wallet, Transaction};
+
 use super::{App, Block};
 use libp2p::{
     floodsub::{Floodsub, FloodsubEvent, Topic},
-    identity,
+    identity::{self, ed25519::{self, PublicKey}},
     mdns::{Mdns, MdnsEvent},
     swarm::{NetworkBehaviourEventProcess, Swarm},
     NetworkBehaviour, PeerId,
 };
-use log::{error, info};
+use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -19,6 +21,7 @@ pub static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
 // We have 2 topics for our p2p network so we know what to do when we get data
 pub static CHAIN_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("chains"));
 pub static BLOCK_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("blocks"));
+pub static TRANSACTION_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("transactions"));
 
 // When we request for someone's blockchain, they will give us their blocks for the
 // blockchain and we will need their peer id
@@ -81,6 +84,7 @@ impl AppBehaviour {
         // Subscribe to both of our network topics
         behaviour.floodsub.subscribe(CHAIN_TOPIC.clone());
         behaviour.floodsub.subscribe(BLOCK_TOPIC.clone());
+        behaviour.floodsub.subscribe(TRANSACTION_TOPIC.clone());
 
         // Return ownership of the AppBehaviour instance
         behaviour
@@ -128,6 +132,10 @@ impl NetworkBehaviourEventProcess<FloodsubEvent> for AppBehaviour {
                 info!("received new block from {}", msg.source.to_string());
                 // Attempt at adding the incoming block
                 self.app.try_add_block(block);
+            } else if let Ok(new_transaction) = serde_json::from_slice::<Transaction>(&msg.data) {
+                info!("received new transaction from {}", msg.source.to_string());
+                // Attempt at adding the incoming block
+                self.app.try_add_transaction(new_transaction);
             }
         }
     }
@@ -187,7 +195,65 @@ pub fn handle_print_chain(swarm: &Swarm<AppBehaviour>) {
     info!("{}", pretty_json);
 }
 
+// Print the blockchain based on the p2p swarm
+pub fn handle_print_transactions(swarm: &Swarm<AppBehaviour>) {
+    info!("Local Pending Transactions:");
+    // Get all the blocks in the chain and parse them into formatted json
+    let pretty_json =
+        serde_json::to_string_pretty(&swarm.behaviour().app.pending_transactions).expect("can jsonify blocks");
+    info!("{}", pretty_json);
+}
+
 // Create a new block based on the input
+pub fn send_transaction(cmd: &str, wallet: &Wallet, swarm: &mut Swarm<AppBehaviour>) {
+    // the create block command is "create b", so we want to remove this
+    // prefix and get the data. If this fails then that means the string
+    // did not start with "create b".
+    if let Some(data) = cmd.strip_prefix("send ") {
+        let transaction_data: Vec<&str> = data.split(" to ").collect::<Vec<&str>>();
+
+        if transaction_data.len() != 2 {
+            warn!("Transaction should be in this format: send {{amount}} to {{address}}");
+            return;
+        }
+
+        let amount: u64 = transaction_data[0].parse().unwrap();
+        let transaction_decode_result = hex::decode(&transaction_data[1]);
+        let to_address_bytes: &Vec<u8> = match &transaction_decode_result {
+            Err(error) => {
+                warn!("Address was not formatted in hex: {}", error);
+                return;
+            }
+            Ok(address) => address
+        };
+        let to_address: PublicKey = match PublicKey::decode(to_address_bytes) {
+            Err(error) => {
+                warn!("Could not send transaction to {}", error);
+                return;
+            }
+            Ok(address) => address
+        };
+
+        // Get a mutable instance to AppBehaviour
+        let behaviour = swarm.behaviour_mut();
+        // Create a new valid transaction with the inputted data
+        let transaction = Transaction::new(
+            wallet,
+            &to_address,
+            amount,
+        );
+        // Convert the block to json so we can send in over the p2p network.
+        let json = serde_json::to_string(&transaction).expect("can jsonify request");
+        // Add this block to our chain
+        behaviour.app.pending_transactions.push(transaction);
+        info!("broadcasting new transaction");
+        // Use floodsub to publish our block to all subscribers
+        behaviour
+            .floodsub
+            .publish(TRANSACTION_TOPIC.clone(), json.as_bytes());
+    }
+}
+
 pub fn handle_create_block(cmd: &str, swarm: &mut Swarm<AppBehaviour>) {
     // the create block command is "create b", so we want to remove this
     // prefix and get the data. If this fails then that means the string
