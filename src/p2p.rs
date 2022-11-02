@@ -19,21 +19,21 @@ pub static KEYS: Lazy<identity::Keypair> = Lazy::new(identity::Keypair::generate
 // Based on the public key, generate a peer id others will refer to you as
 pub static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
 // We have 2 topics for our p2p network so we know what to do when we get data
-pub static CHAIN_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("chains"));
+pub static APP_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("apps"));
 pub static BLOCK_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("blocks"));
 pub static TRANSACTION_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("transactions"));
 
 // When we request for someone's blockchain, they will give us their blocks for the
 // blockchain and we will need their peer id
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ChainResponse {
-    pub blocks: Vec<Block>,
+pub struct AppResponse {
+    pub app: App,
     pub receiver: String,
 }
 
 // We someone requests our local blockchain, we will need to know where to send it
 #[derive(Debug, Serialize, Deserialize)]
-pub struct LocalChainRequest {
+pub struct LocalAppRequest {
     pub from_peer_id: String,
 }
 
@@ -41,7 +41,7 @@ pub struct LocalChainRequest {
 // could be sending our local blockchain, getting command line input from the user, or
 // initiating a new blockchain.
 pub enum EventType {
-    LocalChainResponse(ChainResponse),
+    LocalAppResponse(AppResponse),
     Input(String),
     Init,
 }
@@ -56,7 +56,7 @@ pub struct AppBehaviour {
     pub floodsub: Floodsub,
     pub mdns: Mdns,
     #[behaviour(ignore)]
-    pub response_sender: mpsc::UnboundedSender<ChainResponse>,
+    pub response_sender: mpsc::UnboundedSender<AppResponse>,
     #[behaviour(ignore)]
     pub init_sender: mpsc::UnboundedSender<bool>,
     #[behaviour(ignore)]
@@ -66,7 +66,7 @@ pub struct AppBehaviour {
 impl AppBehaviour {
     pub async fn new(
         app: App,
-        response_sender: mpsc::UnboundedSender<ChainResponse>,
+        response_sender: mpsc::UnboundedSender<AppResponse>,
         init_sender: mpsc::UnboundedSender<bool>,
     ) -> Self {
         // Create a new instance of AppBehaviour
@@ -82,7 +82,7 @@ impl AppBehaviour {
             init_sender,
         };
         // Subscribe to both of our network topics
-        behaviour.floodsub.subscribe(CHAIN_TOPIC.clone());
+        behaviour.floodsub.subscribe(APP_TOPIC.clone());
         behaviour.floodsub.subscribe(BLOCK_TOPIC.clone());
         behaviour.floodsub.subscribe(TRANSACTION_TOPIC.clone());
 
@@ -102,26 +102,28 @@ impl NetworkBehaviourEventProcess<FloodsubEvent> for AppBehaviour {
             // Parse an array of bytes (Vec<u8>) into json and try to Serialize it into
             // ChainResponse. If this returns and Error, it means that the incoming data
             // is not compatible with ChainResponse so continue.
-            if let Ok(resp) = serde_json::from_slice::<ChainResponse>(&msg.data) {
+            if let Ok(resp) = serde_json::from_slice::<AppResponse>(&msg.data) {
                 // Check if we are the intended recipient of the msg
                 if resp.receiver == PEER_ID.to_string() {
                     info!("Response from {}:", msg.source);
                     // For every block in the received chain, print in to the console
-                    resp.blocks.iter().for_each(|r| info!("{:?}", r));
+                    serde_json::to_string_pretty(&resp.app).expect("can jsonify app"); 
 
                     // Pick a chain to use and then set it as the local chain.
-                    self.app.blocks = self.app.choose_chain(self.app.blocks.clone(), resp.blocks);
+                    self.app.blocks = self.app.choose_chain(self.app.blocks.clone(), resp.app.blocks);
+                    // TODO: have consensus mechanism to choose pending transactions
+                    self.app.pending_transactions = resp.app.pending_transactions;
                 }
             // Check if the incoming data is of the type LocalChainRequest
-            } else if let Ok(resp) = serde_json::from_slice::<LocalChainRequest>(&msg.data) {
+            } else if let Ok(resp) = serde_json::from_slice::<LocalAppRequest>(&msg.data) {
                 let peer_id = resp.from_peer_id;
                 // Check if peer is requesting our local chain
                 if PEER_ID.to_string() == peer_id {
-                    info!("sending local chain to {}", msg.source.to_string());
+                    info!("sending local app to {}", msg.source.to_string());
                     // Send our local blockchain to the peer that was requesting it. If it
                     // errored, then announce it.
-                    if let Err(e) = self.response_sender.send(ChainResponse {
-                        blocks: self.app.blocks.clone(),
+                    if let Err(e) = self.response_sender.send(AppResponse {
+                        app: self.app.clone(),
                         receiver: msg.source.to_string(),
                     }) {
                         error!("error sending response via channel, {}", e);

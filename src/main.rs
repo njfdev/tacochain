@@ -29,6 +29,7 @@ mod p2p;
 mod wallet;
 
 // The app just stores out blockchain
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct App {
     pub blocks: Vec<Block>,
     pub pending_transactions: Vec<Transaction>,
@@ -339,7 +340,7 @@ async fn main() {
                 // Wait until a response has been received and then return event type of LocalChainResponse
                 // with the received response.
                 response = response_rcv.recv() => {
-                    Some(p2p::EventType::LocalChainResponse(response.expect("response exists")))
+                    Some(p2p::EventType::LocalAppResponse(response.expect("response exists")))
                 },
                 // Wait until there is an init event then return the event type of init
                 _init = init_rcv.recv() => {
@@ -371,7 +372,7 @@ async fn main() {
                     // If there are other peers, than get their blockchain
                     if !peers.is_empty() {
                         // Create a request to get the chain from the last peer in our list
-                        let req = p2p::LocalChainRequest {
+                        let req = p2p::LocalAppRequest {
                             from_peer_id: peers
                                 .iter()
                                 .last()
@@ -385,7 +386,7 @@ async fn main() {
                         swarm
                             .behaviour_mut()
                             .floodsub
-                            .publish(p2p::CHAIN_TOPIC.clone(), json.as_bytes());
+                            .publish(p2p::APP_TOPIC.clone(), json.as_bytes());
                     // Otherwise, this is the only node
                     } else {
                         // because there are no other nodes to get the chain from, create the chain locally
@@ -393,13 +394,13 @@ async fn main() {
                     }
                 }
                 // If a peer is requesting our chain
-                p2p::EventType::LocalChainResponse(resp) => {
+                p2p::EventType::LocalAppResponse(resp) => {
                     // Convert the response to json then send it
                     let json = serde_json::to_string(&resp).expect("can jsonify response");
                     swarm
                         .behaviour_mut()
                         .floodsub
-                        .publish(p2p::CHAIN_TOPIC.clone(), json.as_bytes());
+                        .publish(p2p::APP_TOPIC.clone(), json.as_bytes());
                 }
                 // If the user made input
                 p2p::EventType::Input(line) => match line.as_str() {
