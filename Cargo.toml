@@ -16,7 +16,7 @@ serde = {version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_with = "1.9.1"
 # LibP2P lets us build peer to peer applications such as a decentralized blockchain.
-libp2p = { version = "0.39", features = ["tcp-tokio", "mdns"] }
+libp2p = { version = "0.45", features = ["tcp-tokio", "mdns"] }
 # A Rust runtime specifically for building reliable network applications. Focused on being
 # asynchronous, reliable, and fast.
 tokio = { version = "1.0", features = ["io-util", "io-std", "macros", "rt", "rt-multi-thread", "sync", "time"] }
