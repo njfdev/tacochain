@@ -19,7 +19,7 @@ serde_with = "1.9.1"
 libp2p = { version = "0.39", features = ["tcp-tokio", "mdns"] }
 # A Rust runtime specifically for building reliable network applications. Focused on being
 # asynchronous, reliable, and fast.
-tokio = { version = "1.0", features = ["io-util", "io-std", "macros", "rt", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1.23", features = ["io-util", "io-std", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 # Use for encoding and decoding hexadecimal
 hex = {version="0.4", features = ["serde"]}
 # Used so we can lazy load variables
